@@ -12,6 +12,9 @@ import (
 type IServer interface {
 	//server must be configurable, so embed this:
 	config.IValidator
+
+	//Run is a blocking call that calls the micro-server Handler method for received requests
+	Run(msvc IMicroService)
 }
 
 //RegisterServer must be called in the server implementation's init() func
@@ -36,10 +39,9 @@ var (
 	serverTmpl  = make(map[string]IServer)
 )
 
-func startServers(cs config.ISet) {
+func startConfiguredServers(wg *sync.WaitGroup, cs config.ISet, msvc IMicroService) {
 	log.Debugf("Trying %d server configurations...", len(serverTmpl))
 	for serverName, tmpl := range serverTmpl {
-		log.Debugf("Trying %s...", serverName)
 		serverConfiguration, err := cs.Add(serverName, tmpl)
 		if err != nil {
 			log.Debugf("server[%s] not configured: %+v", serverName, err)
@@ -48,7 +50,11 @@ func startServers(cs config.ISet) {
 
 		configuredServer := serverConfiguration.Current().(IServer)
 		log.Debugf("Got %s: %T: %+v", serverName, configuredServer, configuredServer)
-	}
 
-	panic("NYI")
-}
+		//start the server to call the micro-service handler when it received a request
+		wg.Add(1)
+		go configuredServer.Run(msvc)
+
+		log.Debugf("Started server (%T)%+v", configuredServer, configuredServer)
+	}
+} //startConfiguredServers()
